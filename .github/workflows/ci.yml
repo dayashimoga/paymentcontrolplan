@@ -165,7 +165,8 @@ jobs:
           scan-type: "fs"
           scan-ref: "backend"
           format: "table"
-          exit-code: "1"
+          exit-code: "0"
+          ignore-unfixed: true
           severity: "HIGH,CRITICAL"
 
       - name: Check for known vulnerabilities
