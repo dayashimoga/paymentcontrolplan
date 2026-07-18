@@ -81,7 +81,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*domain.Paymen
 	selectedProvider, err := s.routingEngine.SelectProvider(ctx, input.MerchantID, input.Amount, input.Currency)
 	if err != nil {
 		payment.MarkFailed("no available provider: " + err.Error())
-		s.paymentRepo.Update(ctx, payment)
+		_ = s.paymentRepo.Update(ctx, payment)
 		return payment, nil
 	}
 
@@ -89,13 +89,15 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*domain.Paymen
 	gw, ok := s.gateways[selectedProvider.Type]
 	if !ok {
 		payment.MarkFailed(fmt.Sprintf("no gateway for provider type: %s", selectedProvider.Type))
-		s.paymentRepo.Update(ctx, payment)
+		_ = s.paymentRepo.Update(ctx, payment)
 		return payment, nil
 	}
 
 	// Process charge
 	payment.MarkProcessing(selectedProvider.ID)
-	s.paymentRepo.Update(ctx, payment)
+	if err := s.paymentRepo.Update(ctx, payment); err != nil {
+		return nil, fmt.Errorf("updating payment to processing: %w", err)
+	}
 
 	chargeResp, err := gw.Charge(ctx, provider.ChargeRequest{
 		Amount:         input.Amount,
@@ -106,12 +108,14 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*domain.Paymen
 	})
 	if err != nil {
 		payment.MarkFailed(err.Error())
-		s.paymentRepo.Update(ctx, payment)
+		_ = s.paymentRepo.Update(ctx, payment)
 		return payment, nil
 	}
 
 	payment.MarkCompleted(chargeResp.ExternalID)
-	s.paymentRepo.Update(ctx, payment)
+	if err := s.paymentRepo.Update(ctx, payment); err != nil {
+		return nil, fmt.Errorf("updating payment to completed: %w", err)
+	}
 	return payment, nil
 }
 
@@ -158,6 +162,8 @@ func (s *Service) Refund(ctx context.Context, paymentID uuid.UUID) (*domain.Paym
 	}
 
 	payment.MarkRefunded()
-	s.paymentRepo.Update(ctx, payment)
+	if err := s.paymentRepo.Update(ctx, payment); err != nil {
+		return nil, fmt.Errorf("updating payment to refunded: %w", err)
+	}
 	return payment, nil
 }

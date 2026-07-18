@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -88,9 +89,13 @@ func TestMerchantHandler_Create_InvalidJSON(t *testing.T) {
 
 func TestMerchantHandler_Get(t *testing.T) {
 	r, svc := testMerchantRouter()
+	ctx := context.TODO()
 
 	// Create a merchant first
-	m, _ := svc.Create(nil, appmch.CreateInput{Name: "GetTest"})
+	m, err := svc.Create(ctx, appmch.CreateInput{Name: "GetTest"})
+	if err != nil {
+		t.Fatalf("failed to create merchant: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/merchants/"+m.ID.String(), nil)
 	rec := httptest.NewRecorder()
@@ -117,9 +122,10 @@ func TestMerchantHandler_Get_InvalidUUID(t *testing.T) {
 
 func TestMerchantHandler_List(t *testing.T) {
 	r, svc := testMerchantRouter()
+	ctx := context.TODO()
 
-	svc.Create(nil, appmch.CreateInput{Name: "ListTest1"})
-	svc.Create(nil, appmch.CreateInput{Name: "ListTest2"})
+	_, _ = svc.Create(ctx, appmch.CreateInput{Name: "ListTest1"})
+	_, _ = svc.Create(ctx, appmch.CreateInput{Name: "ListTest2"})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/merchants?offset=0&limit=10", nil)
 	rec := httptest.NewRecorder()
@@ -131,7 +137,9 @@ func TestMerchantHandler_List(t *testing.T) {
 	}
 
 	var resp dto.ListMerchantsResponse
-	json.NewDecoder(rec.Body).Decode(&resp)
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
 	if resp.Total < 2 {
 		t.Errorf("expected at least 2 merchants, got %d", resp.Total)
 	}
@@ -139,8 +147,12 @@ func TestMerchantHandler_List(t *testing.T) {
 
 func TestMerchantHandler_Delete(t *testing.T) {
 	r, svc := testMerchantRouter()
+	ctx := context.TODO()
 
-	m, _ := svc.Create(nil, appmch.CreateInput{Name: "DeleteTest"})
+	m, err := svc.Create(ctx, appmch.CreateInput{Name: "DeleteTest"})
+	if err != nil {
+		t.Fatalf("failed to create merchant: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodDelete, "/api/v1/merchants/"+m.ID.String(), nil)
 	rec := httptest.NewRecorder()

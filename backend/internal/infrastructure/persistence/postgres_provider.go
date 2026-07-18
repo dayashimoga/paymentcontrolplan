@@ -40,7 +40,9 @@ func (r *PostgresProviderRepository) GetByID(ctx context.Context, id uuid.UUID) 
 
 func (r *PostgresProviderRepository) List(ctx context.Context, offset, limit int) ([]*provider.Provider, int, error) {
 	var total int
-	r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM providers`).Scan(&total)
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM providers`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, `SELECT id,name,type,config,status,priority,created_at,updated_at FROM providers ORDER BY priority LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -111,7 +113,7 @@ func (r *PostgresProviderRepository) scanProvider(row pgx.Row) (*provider.Provid
 	}
 	p.Type = provider.Type(typ)
 	p.Status = provider.Status(status)
-	json.Unmarshal(configJSON, &p.Config)
+	_ = json.Unmarshal(configJSON, &p.Config)
 	return &p, nil
 }
 
@@ -125,6 +127,6 @@ func (r *PostgresProviderRepository) scanProviderFromRows(rows pgx.Rows) (*provi
 	}
 	p.Type = provider.Type(typ)
 	p.Status = provider.Status(status)
-	json.Unmarshal(configJSON, &p.Config)
+	_ = json.Unmarshal(configJSON, &p.Config)
 	return &p, nil
 }

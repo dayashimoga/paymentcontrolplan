@@ -39,7 +39,7 @@ func TestIntegration_MerchantCRUD_E2E(t *testing.T) {
 		}
 
 		var created map[string]interface{}
-		json.Unmarshal(rr.Body.Bytes(), &created)
+		_ = json.Unmarshal(rr.Body.Bytes(), &created)
 		id := created["id"].(string)
 		apiKey := created["api_key"].(string)
 
@@ -67,7 +67,7 @@ func TestIntegration_MerchantCRUD_E2E(t *testing.T) {
 		}
 
 		var listed map[string]interface{}
-		json.Unmarshal(rr3.Body.Bytes(), &listed)
+		_ = json.Unmarshal(rr3.Body.Bytes(), &listed)
 		if listed["total"].(float64) < 1 {
 			t.Fatal("list: expected at least 1 merchant")
 		}

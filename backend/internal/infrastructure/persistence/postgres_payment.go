@@ -45,7 +45,9 @@ func (r *PostgresPaymentRepository) GetByIdempotencyKey(ctx context.Context, mer
 
 func (r *PostgresPaymentRepository) List(ctx context.Context, merchantID uuid.UUID, offset, limit int) ([]*payment.Payment, int, error) {
 	var total int
-	r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE merchant_id=$1`, merchantID).Scan(&total)
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM payments WHERE merchant_id=$1`, merchantID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, `SELECT id,merchant_id,provider_id,amount,currency,status,external_id,idempotency_key,description,metadata,error_message,attempt_count,created_at,updated_at FROM payments WHERE merchant_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, merchantID, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -82,7 +84,7 @@ func (r *PostgresPaymentRepository) scanPayment(row pgx.Row) (*payment.Payment, 
 		return nil, err
 	}
 	p.Status = payment.Status(status)
-	json.Unmarshal(metaJSON, &p.Metadata)
+	_ = json.Unmarshal(metaJSON, &p.Metadata)
 	return &p, nil
 }
 
@@ -95,6 +97,6 @@ func (r *PostgresPaymentRepository) scanPaymentFromRows(rows pgx.Rows) (*payment
 		return nil, err
 	}
 	p.Status = payment.Status(status)
-	json.Unmarshal(metaJSON, &p.Metadata)
+	_ = json.Unmarshal(metaJSON, &p.Metadata)
 	return &p, nil
 }
