@@ -29,7 +29,9 @@ func (r *PostgresAuditRepository) Create(ctx context.Context, l *audit.AuditLog)
 
 func (r *PostgresAuditRepository) ListByEntity(ctx context.Context, entityType string, entityID uuid.UUID, offset, limit int) ([]*audit.AuditLog, int, error) {
 	var total int
-	r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE entity_type=$1 AND entity_id=$2`, entityType, entityID).Scan(&total)
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE entity_type=$1 AND entity_id=$2`, entityType, entityID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, `SELECT id,entity_type,entity_id,action,actor_id,changes,ip_address,user_agent,created_at FROM audit_logs WHERE entity_type=$1 AND entity_id=$2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`, entityType, entityID, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -39,8 +41,10 @@ func (r *PostgresAuditRepository) ListByEntity(ctx context.Context, entityType s
 	for rows.Next() {
 		var l audit.AuditLog
 		var changesJSON []byte
-		rows.Scan(&l.ID, &l.EntityType, &l.EntityID, &l.Action, &l.ActorID, &changesJSON, &l.IPAddress, &l.UserAgent, &l.CreatedAt)
-		json.Unmarshal(changesJSON, &l.Changes)
+		if err := rows.Scan(&l.ID, &l.EntityType, &l.EntityID, &l.Action, &l.ActorID, &changesJSON, &l.IPAddress, &l.UserAgent, &l.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal(changesJSON, &l.Changes)
 		result = append(result, &l)
 	}
 	return result, total, nil
@@ -48,7 +52,9 @@ func (r *PostgresAuditRepository) ListByEntity(ctx context.Context, entityType s
 
 func (r *PostgresAuditRepository) ListByActor(ctx context.Context, actorID uuid.UUID, offset, limit int) ([]*audit.AuditLog, int, error) {
 	var total int
-	r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE actor_id=$1`, actorID).Scan(&total)
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM audit_logs WHERE actor_id=$1`, actorID).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, `SELECT id,entity_type,entity_id,action,actor_id,changes,ip_address,user_agent,created_at FROM audit_logs WHERE actor_id=$1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`, actorID, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -58,8 +64,10 @@ func (r *PostgresAuditRepository) ListByActor(ctx context.Context, actorID uuid.
 	for rows.Next() {
 		var l audit.AuditLog
 		var changesJSON []byte
-		rows.Scan(&l.ID, &l.EntityType, &l.EntityID, &l.Action, &l.ActorID, &changesJSON, &l.IPAddress, &l.UserAgent, &l.CreatedAt)
-		json.Unmarshal(changesJSON, &l.Changes)
+		if err := rows.Scan(&l.ID, &l.EntityType, &l.EntityID, &l.Action, &l.ActorID, &changesJSON, &l.IPAddress, &l.UserAgent, &l.CreatedAt); err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal(changesJSON, &l.Changes)
 		result = append(result, &l)
 	}
 	return result, total, nil
@@ -100,7 +108,9 @@ func (r *PostgresWebhookRepository) ListPending(ctx context.Context, limit int) 
 	for rows.Next() {
 		var w webhook.Webhook
 		var status string
-		rows.Scan(&w.ID, &w.MerchantID, &w.PaymentID, &w.URL, &w.EventType, &w.Payload, &status, &w.Attempts, &w.MaxRetries, &w.NextRetry, &w.CreatedAt, &w.UpdatedAt)
+		if err := rows.Scan(&w.ID, &w.MerchantID, &w.PaymentID, &w.URL, &w.EventType, &w.Payload, &status, &w.Attempts, &w.MaxRetries, &w.NextRetry, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
 		w.Status = webhook.Status(status)
 		result = append(result, &w)
 	}
@@ -117,7 +127,9 @@ func (r *PostgresWebhookRepository) ListByPayment(ctx context.Context, paymentID
 	for rows.Next() {
 		var w webhook.Webhook
 		var status string
-		rows.Scan(&w.ID, &w.MerchantID, &w.PaymentID, &w.URL, &w.EventType, &w.Payload, &status, &w.Attempts, &w.MaxRetries, &w.NextRetry, &w.CreatedAt, &w.UpdatedAt)
+		if err := rows.Scan(&w.ID, &w.MerchantID, &w.PaymentID, &w.URL, &w.EventType, &w.Payload, &status, &w.Attempts, &w.MaxRetries, &w.NextRetry, &w.CreatedAt, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
 		w.Status = webhook.Status(status)
 		result = append(result, &w)
 	}
@@ -157,7 +169,9 @@ func (r *PostgresReconciliationRepository) GetByPayment(ctx context.Context, pay
 
 func (r *PostgresReconciliationRepository) ListUnmatched(ctx context.Context, offset, limit int) ([]*reconciliation.Record, int, error) {
 	var total int
-	r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM reconciliation_records WHERE is_matched=false`).Scan(&total)
+	if err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM reconciliation_records WHERE is_matched=false`).Scan(&total); err != nil {
+		return nil, 0, err
+	}
 	rows, err := r.pool.Query(ctx, `SELECT id,payment_id,provider_id,internal_amount,external_amount,internal_status,external_status,is_matched,discrepancy,reconciled_at,created_at FROM reconciliation_records WHERE is_matched=false ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -167,7 +181,9 @@ func (r *PostgresReconciliationRepository) ListUnmatched(ctx context.Context, of
 	for rows.Next() {
 		var rec reconciliation.Record
 		var intStatus string
-		rows.Scan(&rec.ID, &rec.PaymentID, &rec.ProviderID, &rec.InternalAmount, &rec.ExternalAmount, &intStatus, &rec.ExternalStatus, &rec.IsMatched, &rec.Discrepancy, &rec.ReconciledAt, &rec.CreatedAt)
+		if err := rows.Scan(&rec.ID, &rec.PaymentID, &rec.ProviderID, &rec.InternalAmount, &rec.ExternalAmount, &intStatus, &rec.ExternalStatus, &rec.IsMatched, &rec.Discrepancy, &rec.ReconciledAt, &rec.CreatedAt); err != nil {
+			return nil, 0, err
+		}
 		rec.InternalStatus = reconciliation.Status(intStatus)
 		result = append(result, &rec)
 	}
@@ -208,7 +224,9 @@ func (r *PostgresAnalyticsRepository) GetProviderStats(ctx context.Context, merc
 	for rows.Next() {
 		var s analytics.ProviderStats
 		var name *string
-		rows.Scan(&s.ProviderID, &name, &s.TotalCharges, &s.SuccessCount, &s.FailureCount, &s.TotalAmount)
+		if err := rows.Scan(&s.ProviderID, &name, &s.TotalCharges, &s.SuccessCount, &s.FailureCount, &s.TotalAmount); err != nil {
+			return nil, err
+		}
 		if name != nil {
 			s.ProviderName = *name
 		}

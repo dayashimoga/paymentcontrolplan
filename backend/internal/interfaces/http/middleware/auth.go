@@ -69,7 +69,7 @@ func withMerchant(ctx context.Context, m *merchant.Merchant) context.Context {
 func writeAuthError(w http.ResponseWriter, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"error": "unauthorized", "message": msg, "code": 401,
 	})
 }

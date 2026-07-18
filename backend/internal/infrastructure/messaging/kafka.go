@@ -93,7 +93,7 @@ func (s *KafkaSubscriber) Subscribe(ctx context.Context, topic string, handler f
 			if err := json.Unmarshal(msg.Value, &evt); err != nil {
 				continue
 			}
-			handler(evt)
+			_ = handler(evt)
 		}
 	}()
 

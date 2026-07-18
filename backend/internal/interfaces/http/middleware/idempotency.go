@@ -3,7 +3,6 @@ package middleware
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net/http"
 	"sync"
 	"time"
@@ -66,7 +65,7 @@ func (s *IdempotencyStore) Idempotency(next http.Handler) http.Handler {
 			}
 			w.Header().Set("X-Idempotent-Replayed", "true")
 			w.WriteHeader(entry.statusCode)
-			w.Write(entry.body)
+			_, _ = w.Write(entry.body)
 			return
 		}
 
@@ -116,11 +115,4 @@ func (s *IdempotencyStore) cleanup() {
 			delete(s.entries, k)
 		}
 	}
-}
-
-// writeJSON is a helper for middleware JSON responses.
-func writeJSON(w http.ResponseWriter, status int, data interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
 }

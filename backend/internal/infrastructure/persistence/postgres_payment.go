@@ -82,7 +82,7 @@ func (r *PostgresPaymentRepository) scanPayment(row pgx.Row) (*payment.Payment, 
 		return nil, err
 	}
 	p.Status = payment.Status(status)
-	json.Unmarshal(metaJSON, &p.Metadata)
+	_ = json.Unmarshal(metaJSON, &p.Metadata)
 	return &p, nil
 }
 
@@ -95,6 +95,6 @@ func (r *PostgresPaymentRepository) scanPaymentFromRows(rows pgx.Rows) (*payment
 		return nil, err
 	}
 	p.Status = payment.Status(status)
-	json.Unmarshal(metaJSON, &p.Metadata)
+	_ = json.Unmarshal(metaJSON, &p.Metadata)
 	return &p, nil
 }

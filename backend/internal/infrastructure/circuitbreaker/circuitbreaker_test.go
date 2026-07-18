@@ -23,7 +23,7 @@ func TestCircuitBreaker_OpensAfterThreshold(t *testing.T) {
 	cb := circuitbreaker.New("test", 3, 2, time.Second)
 	testErr := errors.New("fail")
 	for i := 0; i < 3; i++ {
-		cb.Execute(func() error { return testErr })
+		_ = cb.Execute(func() error { return testErr })
 	}
 	if cb.CurrentState() != circuitbreaker.StateOpen {
 		t.Fatal("expected open state after 3 failures")
@@ -37,7 +37,7 @@ func TestCircuitBreaker_OpensAfterThreshold(t *testing.T) {
 func TestCircuitBreaker_HalfOpenAfterTimeout(t *testing.T) {
 	cb := circuitbreaker.New("test", 2, 1, 50*time.Millisecond)
 	for i := 0; i < 2; i++ {
-		cb.Execute(func() error { return errors.New("fail") })
+		_ = cb.Execute(func() error { return errors.New("fail") })
 	}
 	if cb.CurrentState() != circuitbreaker.StateOpen {
 		t.Fatal("expected open")
@@ -51,10 +51,10 @@ func TestCircuitBreaker_HalfOpenAfterTimeout(t *testing.T) {
 func TestCircuitBreaker_ClosesAfterSuccess(t *testing.T) {
 	cb := circuitbreaker.New("test", 2, 1, 50*time.Millisecond)
 	for i := 0; i < 2; i++ {
-		cb.Execute(func() error { return errors.New("fail") })
+		_ = cb.Execute(func() error { return errors.New("fail") })
 	}
 	time.Sleep(60 * time.Millisecond)
-	cb.Execute(func() error { return nil }) // success in half-open
+	_ = cb.Execute(func() error { return nil }) // success in half-open
 	if cb.CurrentState() != circuitbreaker.StateClosed {
 		t.Fatal("expected closed after success in half-open")
 	}
@@ -62,10 +62,10 @@ func TestCircuitBreaker_ClosesAfterSuccess(t *testing.T) {
 
 func TestCircuitBreaker_ResetsOnSuccess(t *testing.T) {
 	cb := circuitbreaker.New("test", 3, 2, time.Second)
-	cb.Execute(func() error { return errors.New("fail") })
-	cb.Execute(func() error { return errors.New("fail") })
-	cb.Execute(func() error { return nil }) // success resets count
-	cb.Execute(func() error { return errors.New("fail") })
+	_ = cb.Execute(func() error { return errors.New("fail") })
+	_ = cb.Execute(func() error { return errors.New("fail") })
+	_ = cb.Execute(func() error { return nil }) // success resets count
+	_ = cb.Execute(func() error { return errors.New("fail") })
 	if cb.CurrentState() != circuitbreaker.StateClosed {
 		t.Fatal("should still be closed, success reset the count")
 	}
