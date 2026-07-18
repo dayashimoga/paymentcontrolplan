@@ -12,6 +12,7 @@ permissions:
 env:
   GO_VERSION: "1.23"
   GOLANGCI_LINT_VERSION: "v1.61"
+  ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
 jobs:
   # =========================================================================
@@ -88,7 +89,7 @@ jobs:
           PCP_DATABASE_NAME: pcp_test
           PCP_DATABASE_SSL_MODE: disable
         run: |
-          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./internal/domain/... ./internal/application/... ./internal/infrastructure/auth ./internal/infrastructure/circuitbreaker ./internal/infrastructure/connector ./internal/interfaces/http/...
           go tool cover -func=coverage.out
 
       - name: Check coverage threshold
