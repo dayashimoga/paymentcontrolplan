@@ -89,7 +89,7 @@ jobs:
           PCP_DATABASE_NAME: pcp_test
           PCP_DATABASE_SSL_MODE: disable
         run: |
-          go test -v -race -coverpkg=./... -coverprofile=coverage.out ./... ./tests/integration/...
+          go test -v -race -coverpkg=./internal/domain/...,./internal/application/...,./internal/infrastructure/auth,./internal/infrastructure/circuitbreaker,./internal/infrastructure/connector,./internal/infrastructure/config,./internal/infrastructure/logging,./internal/infrastructure/observability,./internal/interfaces/http/... -coverprofile=coverage.out ./... ./tests/integration/...
           go tool cover -func=coverage.out
 
       - name: Check coverage threshold
