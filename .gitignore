@@ -1,0 +1,52 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/backend/bin/
+/backend/tmp/
+
+# Go
+*.test
+*.out
+*.prof
+/backend/vendor/
+/backend/cover.out
+/backend/cover.html
+/backend/coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Docker
+docker-compose.override.yml
+
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/*.tfstate
+infrastructure/terraform/*.tfstate.backup
+infrastructure/terraform/*.tfvars
+!infrastructure/terraform/*.tfvars.example
+
+# OS
+.DS_Store
+Desktop.ini
+ehthumbs.db
+
+# Coverage & Test artifacts
+*.coverprofile
+junit-report.xml
+coverage.xml

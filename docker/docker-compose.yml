@@ -1,0 +1,123 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: pcp-postgres
+    environment:
+      POSTGRES_USER: pcp
+      POSTGRES_PASSWORD: pcp_secret
+      POSTGRES_DB: pcp
+    ports:
+      - "5432:5432"
+    volumes:
+      - pcp_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pcp-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pcp-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - pcp_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pcp-network
+
+  migrate:
+    image: migrate/migrate:v4.17.0
+    container_name: pcp-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ../backend/migrations:/migrations
+    command: ["-path", "/migrations", "-database", "postgres://pcp:pcp_secret@postgres:5432/pcp?sslmode=disable", "up"]
+    networks:
+      - pcp-network
+
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: pcp-api
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      PCP_SERVER_HOST: "0.0.0.0"
+      PCP_SERVER_PORT: "8080"
+      PCP_DATABASE_HOST: postgres
+      PCP_DATABASE_PORT: "5432"
+      PCP_DATABASE_USER: pcp
+      PCP_DATABASE_PASSWORD: pcp_secret
+      PCP_DATABASE_NAME: pcp
+      PCP_DATABASE_SSL_MODE: disable
+      PCP_REDIS_HOST: redis
+      PCP_REDIS_PORT: "6379"
+      PCP_JWT_SECRET: "dev-jwt-secret-change-in-prod"
+      PCP_JWT_ISSUER: pcp
+      PCP_JWT_EXPIRATION: "24h"
+      PCP_LOG_LEVEL: info
+      PCP_LOG_FORMAT: json
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - pcp-network
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: pcp-prometheus
+    volumes:
+      - ../infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - pcp_prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - pcp-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: pcp-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - pcp_grafana:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - pcp-network
+
+volumes:
+  pcp_pgdata:
+  pcp_redis:
+  pcp_prometheus:
+  pcp_grafana:
+
+networks:
+  pcp-network:
+    driver: bridge

@@ -1,0 +1,100 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "title": "HTTP Request Rate",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{
+        "expr": "sum(rate(pcp_http_requests_total[5m])) by (method)",
+        "legendFormat": "{{method}}"
+      }]
+    },
+    {
+      "title": "HTTP Latency (p95)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(pcp_http_request_duration_seconds_bucket[5m])) by (le, path))",
+        "legendFormat": "{{path}}"
+      }]
+    },
+    {
+      "title": "Payment Volume",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [{
+        "expr": "sum(pcp_payments_total)"
+      }]
+    },
+    {
+      "title": "Payment Success Rate",
+      "type": "gauge",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [{
+        "expr": "sum(pcp_payments_total{status=\"completed\"}) / sum(pcp_payments_total) * 100"
+      }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 100, "unit": "percent" } }
+    },
+    {
+      "title": "Payments by Status",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 8 },
+      "targets": [{
+        "expr": "sum(pcp_payments_total) by (status)",
+        "legendFormat": "{{status}}"
+      }]
+    },
+    {
+      "title": "Payments by Provider",
+      "type": "piechart",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 8 },
+      "targets": [{
+        "expr": "sum(pcp_payments_total) by (provider)",
+        "legendFormat": "{{provider}}"
+      }]
+    },
+    {
+      "title": "Provider Latency (p99)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [{
+        "expr": "histogram_quantile(0.99, sum(rate(pcp_provider_latency_seconds_bucket[5m])) by (le, provider))",
+        "legendFormat": "{{provider}}"
+      }]
+    },
+    {
+      "title": "Circuit Breaker State",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 16 },
+      "targets": [{
+        "expr": "pcp_circuit_breaker_state",
+        "legendFormat": "{{name}}"
+      }],
+      "fieldConfig": { "defaults": { "mappings": [
+        {"type": "value", "options": {"0": {"text": "CLOSED", "color": "green"}}},
+        {"type": "value", "options": {"1": {"text": "OPEN", "color": "red"}}},
+        {"type": "value", "options": {"2": {"text": "HALF-OPEN", "color": "yellow"}}}
+      ]}}
+    },
+    {
+      "title": "Active Connections",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 16 },
+      "targets": [{
+        "expr": "pcp_active_connections"
+      }]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "tags": ["pcp", "payments"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "title": "PCP - Payment Control Plane",
+  "uid": "pcp-overview"
+}

@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package pcp.v1;
+
+option go_package = "github.com/paymentbridge/pcp/api/proto/v1;pcpv1";
+
+import "google/protobuf/timestamp.proto";
+
+// PaymentService provides gRPC endpoints for payment operations.
+service PaymentService {
+  rpc CreatePayment(CreatePaymentRequest) returns (PaymentResponse);
+  rpc GetPayment(GetPaymentRequest) returns (PaymentResponse);
+  rpc ListPayments(ListPaymentsRequest) returns (ListPaymentsResponse);
+  rpc RefundPayment(RefundPaymentRequest) returns (PaymentResponse);
+}
+
+// ProviderService provides gRPC endpoints for provider management.
+service ProviderService {
+  rpc CreateProvider(CreateProviderRequest) returns (ProviderResponse);
+  rpc GetProvider(GetProviderRequest) returns (ProviderResponse);
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  rpc DeleteProvider(DeleteProviderRequest) returns (DeleteProviderResponse);
+}
+
+// MerchantService provides gRPC endpoints for merchant management.
+service MerchantService {
+  rpc CreateMerchant(CreateMerchantRequest) returns (MerchantResponse);
+  rpc GetMerchant(GetMerchantRequest) returns (MerchantResponse);
+  rpc ListMerchants(ListMerchantsRequest) returns (ListMerchantsResponse);
+  rpc UpdateMerchant(UpdateMerchantRequest) returns (MerchantResponse);
+  rpc DeleteMerchant(DeleteMerchantRequest) returns (DeleteMerchantResponse);
+}
+
+// --- Payment Messages ---
+
+message CreatePaymentRequest {
+  int64 amount = 1;
+  string currency = 2;
+  string description = 3;
+  map<string, string> metadata = 4;
+  string idempotency_key = 5;
+}
+
+message GetPaymentRequest {
+  string id = 1;
+}
+
+message ListPaymentsRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message RefundPaymentRequest {
+  string id = 1;
+}
+
+message PaymentResponse {
+  string id = 1;
+  string merchant_id = 2;
+  string provider_id = 3;
+  int64 amount = 4;
+  string currency = 5;
+  string status = 6;
+  string external_id = 7;
+  string description = 8;
+  map<string, string> metadata = 9;
+  string error_message = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+message ListPaymentsResponse {
+  repeated PaymentResponse payments = 1;
+  int32 total = 2;
+  int32 offset = 3;
+  int32 limit = 4;
+}
+
+// --- Provider Messages ---
+
+message CreateProviderRequest {
+  string name = 1;
+  string type = 2;
+  map<string, string> config = 3;
+  int32 priority = 4;
+}
+
+message GetProviderRequest {
+  string id = 1;
+}
+
+message ListProvidersRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message DeleteProviderRequest {
+  string id = 1;
+}
+
+message ProviderResponse {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string status = 4;
+  int32 priority = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ListProvidersResponse {
+  repeated ProviderResponse providers = 1;
+  int32 total = 2;
+  int32 offset = 3;
+  int32 limit = 4;
+}
+
+message DeleteProviderResponse {}
+
+// --- Merchant Messages ---
+
+message CreateMerchantRequest {
+  string name = 1;
+  string webhook_url = 2;
+}
+
+message GetMerchantRequest {
+  string id = 1;
+}
+
+message ListMerchantsRequest {
+  int32 offset = 1;
+  int32 limit = 2;
+}
+
+message UpdateMerchantRequest {
+  string id = 1;
+  string name = 2;
+  string webhook_url = 3;
+  string status = 4;
+}
+
+message DeleteMerchantRequest {
+  string id = 1;
+}
+
+message MerchantResponse {
+  string id = 1;
+  string name = 2;
+  string api_key = 3;
+  string webhook_url = 4;
+  string status = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+message ListMerchantsResponse {
+  repeated MerchantResponse merchants = 1;
+  int32 total = 2;
+  int32 offset = 3;
+  int32 limit = 4;
+}
+
+message DeleteMerchantResponse {}

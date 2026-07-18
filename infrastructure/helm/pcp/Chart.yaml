@@ -1,0 +1,13 @@
+apiVersion: v2
+name: pcp
+description: Payment Control Plane - Payment Orchestration Platform
+type: application
+version: 0.7.0
+appVersion: "0.7.0"
+keywords:
+  - payments
+  - orchestration
+  - fintech
+maintainers:
+  - name: PCP Engineering
+    email: engineering@pcp.dev

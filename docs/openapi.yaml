@@ -1,0 +1,439 @@
+openapi: "3.0.3"
+info:
+  title: Payment Control Plane (PCP) API
+  description: |
+    Neutral payment orchestration platform. Provides one unified API for routing
+    payments across multiple providers (Stripe, PayPal, Adyen, Razorpay).
+    
+    **This is NOT a payment gateway.** PCP never processes or stores raw card data.
+  version: "0.7.0"
+  contact:
+    name: PCP Engineering
+    email: engineering@pcp.dev
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+  - url: https://api.pcp.example.com
+    description: Production
+
+security:
+  - ApiKeyAuth: []
+  - BearerAuth: []
+
+tags:
+  - name: Health
+    description: Health and readiness probes
+  - name: Merchants
+    description: Merchant management
+  - name: Providers
+    description: Payment provider management
+  - name: Payments
+    description: Payment processing
+  - name: Analytics
+    description: Payment analytics and reporting
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: { type: string, example: "pcp-api" }
+                  status: { type: string, example: "healthy" }
+
+  /ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      operationId: getReady
+      security: []
+      responses:
+        "200":
+          description: Service is ready (DB connected)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ready" }
+                  database: { type: string, example: "connected" }
+
+  /api/v1/merchants:
+    post:
+      tags: [Merchants]
+      summary: Create a merchant
+      operationId: createMerchant
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateMerchantRequest" }
+      responses:
+        "201":
+          description: Merchant created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: Duplicate merchant name
+    get:
+      tags: [Merchants]
+      summary: List merchants
+      operationId: listMerchants
+      parameters:
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Paginated merchant list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MerchantList" }
+
+  /api/v1/merchants/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Merchants]
+      summary: Get merchant by ID
+      operationId: getMerchant
+      responses:
+        "200":
+          description: Merchant found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+        "404":
+          description: Merchant not found
+    put:
+      tags: [Merchants]
+      summary: Update merchant
+      operationId: updateMerchant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateMerchantRequest" }
+      responses:
+        "200":
+          description: Merchant updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Merchant" }
+    delete:
+      tags: [Merchants]
+      summary: Delete merchant
+      operationId: deleteMerchant
+      responses:
+        "204": { description: Merchant deleted }
+
+  /api/v1/providers:
+    post:
+      tags: [Providers]
+      summary: Register a payment provider
+      operationId: createProvider
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateProviderRequest" }
+      responses:
+        "201":
+          description: Provider registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+    get:
+      tags: [Providers]
+      summary: List providers
+      operationId: listProviders
+      parameters:
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Paginated provider list
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderList" }
+
+  /api/v1/providers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Providers]
+      summary: Get provider by ID
+      operationId: getProvider
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+    delete:
+      tags: [Providers]
+      summary: Delete provider
+      operationId: deleteProvider
+      responses:
+        "204": { description: Provider deleted }
+
+  /api/v1/payments:
+    post:
+      tags: [Payments]
+      summary: Create a payment
+      operationId: createPayment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePaymentRequest" }
+      responses:
+        "201":
+          description: Payment created and routed to provider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+    get:
+      tags: [Payments]
+      summary: List payments
+      operationId: listPayments
+      parameters:
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentList" }
+
+  /api/v1/payments/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Payments]
+      summary: Get payment by ID
+      operationId: getPayment
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+
+  /api/v1/payments/{id}/refund:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [Payments]
+      summary: Refund a payment
+      operationId: refundPayment
+      responses:
+        "200":
+          description: Payment refunded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+
+  /api/v1/analytics/summary:
+    get:
+      tags: [Analytics]
+      summary: Payment analytics summary
+      operationId: getAnalyticsSummary
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnalyticsSummary" }
+
+  /api/v1/analytics/providers:
+    get:
+      tags: [Analytics]
+      summary: Per-provider statistics
+      operationId: getProviderStats
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, default: 30 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ProviderStats" }
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        code: { type: string }
+        message: { type: string }
+
+    CreateMerchantRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 255 }
+        webhook_url: { type: string, format: uri }
+
+    UpdateMerchantRequest:
+      type: object
+      properties:
+        name: { type: string }
+        webhook_url: { type: string }
+        status: { type: string, enum: [active, suspended, inactive] }
+
+    Merchant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        api_key: { type: string }
+        webhook_url: { type: string }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    MerchantList:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Merchant" } }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+
+    CreateProviderRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type: { type: string, enum: [stripe, paypal, adyen, razorpay] }
+        config: { type: object, additionalProperties: { type: string } }
+        priority: { type: integer }
+
+    Provider:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string }
+        status: { type: string }
+        priority: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProviderList:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Provider" } }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+
+    CreatePaymentRequest:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount: { type: integer, format: int64, minimum: 1, description: "Amount in smallest currency unit (cents)" }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        description: { type: string }
+        metadata: { type: object, additionalProperties: { type: string } }
+        idempotency_key: { type: string }
+
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        merchant_id: { type: string, format: uuid }
+        provider_id: { type: string, format: uuid }
+        amount: { type: integer, format: int64 }
+        currency: { type: string }
+        status: { type: string, enum: [pending, processing, completed, failed, refunded, cancelled] }
+        external_id: { type: string }
+        description: { type: string }
+        metadata: { type: object }
+        error_message: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    PaymentList:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: "#/components/schemas/Payment" } }
+        total: { type: integer }
+        offset: { type: integer }
+        limit: { type: integer }
+
+    AnalyticsSummary:
+      type: object
+      properties:
+        total_payments: { type: integer }
+        completed_payments: { type: integer }
+        failed_payments: { type: integer }
+        total_amount: { type: integer, format: int64 }
+        success_rate: { type: number, format: double }
+
+    ProviderStats:
+      type: object
+      properties:
+        provider_id: { type: string, format: uuid }
+        provider_name: { type: string }
+        total_charges: { type: integer }
+        success_count: { type: integer }
+        failure_count: { type: integer }
+        total_amount: { type: integer, format: int64 }
+        success_rate: { type: number, format: double }
+        avg_latency_ms: { type: integer, format: int64 }
