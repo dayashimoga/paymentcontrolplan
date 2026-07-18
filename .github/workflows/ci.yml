@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.24"
   GOLANGCI_LINT_VERSION: "v1.61"
   ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: "true"
 
@@ -186,7 +186,7 @@ jobs:
         uses: anchore/sbom-action/download-syft@v0
 
       - name: Generate SBOM
-        run: syft pcp-api:${{ github.sha }} -o spdx-json > sbom.spdx.json
+        run: syft dir:backend -o spdx-json > sbom.spdx.json
 
       - name: Upload SBOM
         uses: actions/upload-artifact@v4
