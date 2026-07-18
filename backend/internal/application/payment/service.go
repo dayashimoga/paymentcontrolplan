@@ -117,7 +117,6 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*domain.Paymen
 		return nil, fmt.Errorf("updating payment to completed: %w", err)
 	}
 	return payment, nil
-	return payment, nil
 }
 
 // GetByID retrieves a payment by ID.

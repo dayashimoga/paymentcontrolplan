@@ -14,6 +14,7 @@ import (
 	"github.com/paymentbridge/pcp/internal/domain/payment"
 	"github.com/paymentbridge/pcp/internal/domain/provider"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/handler"
+	"github.com/paymentbridge/pcp/internal/interfaces/http/middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.uber.org/zap"
@@ -141,7 +142,7 @@ func (m *mockEngine) SelectProvider(ctx context.Context, merchantID uuid.UUID, a
 	return args.Get(0).(*provider.Provider), args.Error(1)
 }
 
-func testPaymentRouter() (*chi.Mux, *apppay.Service, uuid.UUID) {
+func testPaymentRouter() (*chi.Mux, *mockPaymentRepo, *mockEngine, *mockGateway, uuid.UUID) {
 	payRepo := new(mockPaymentRepo)
 	provRepo := new(mockProviderRepo)
 	eng := new(mockEngine)
@@ -157,8 +158,7 @@ func testPaymentRouter() (*chi.Mux, *apppay.Service, uuid.UUID) {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), "authenticated_merchant", mObj)
-			next.ServeHTTP(w, r.WithContext(ctx))
+			next.ServeHTTP(w, r.WithContext(middleware.WithMerchant(r.Context(), mObj)))
 		})
 	})
 	r.Post("/api/v1/payments", h.Create)
@@ -166,11 +166,16 @@ func testPaymentRouter() (*chi.Mux, *apppay.Service, uuid.UUID) {
 	r.Get("/api/v1/payments/{id}", h.Get)
 	r.Post("/api/v1/payments/{id}/refund", h.Refund)
 
-	return r, svc, merchantID
+	return r, payRepo, eng, gw, merchantID
 }
 
 func TestPaymentHandler_Create(t *testing.T) {
-	r, _, _ := testPaymentRouter()
+	r, payRepo, eng, gw, _ := testPaymentRouter()
+
+	payRepo.On("Create", mock.Anything, mock.Anything).Return(nil)
+	payRepo.On("Update", mock.Anything, mock.Anything).Return(nil)
+	eng.On("SelectProvider", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&provider.Provider{ID: uuid.New(), Type: provider.TypeStripe}, nil)
+	gw.On("Charge", mock.Anything, mock.Anything).Return(&provider.ChargeResponse{ExternalID: "ext_123", Status: "succeeded"}, nil)
 
 	body := `{"amount":1000,"currency":"USD","description":"Test Payment"}`
 	req := httptest.NewRequest("POST", "/api/v1/payments", bytes.NewBufferString(body))
@@ -179,11 +184,11 @@ func TestPaymentHandler_Create(t *testing.T) {
 
 	r.ServeHTTP(rec, req)
 
-	assert.True(t, rec.Code == http.StatusCreated || rec.Code == http.StatusBadRequest || rec.Code == http.StatusInternalServerError || rec.Code == http.StatusUnauthorized)
+	assert.Equal(t, http.StatusCreated, rec.Code)
 }
 
 func TestPaymentHandler_Get_InvalidUUID(t *testing.T) {
-	r, _, _ := testPaymentRouter()
+	r, _, _, _, _ := testPaymentRouter()
 
 	req := httptest.NewRequest("GET", "/api/v1/payments/invalid-uuid", nil)
 	rec := httptest.NewRecorder()

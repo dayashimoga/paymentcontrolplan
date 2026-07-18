@@ -62,8 +62,13 @@ func MerchantFromContext(ctx context.Context) *merchant.Merchant {
 	return m
 }
 
-func withMerchant(ctx context.Context, m *merchant.Merchant) context.Context {
+// WithMerchant adds an authenticated merchant to the context.
+func WithMerchant(ctx context.Context, m *merchant.Merchant) context.Context {
 	return context.WithValue(ctx, merchantCtxKey, m)
+}
+
+func withMerchant(ctx context.Context, m *merchant.Merchant) context.Context {
+	return WithMerchant(ctx, m)
 }
 
 func writeAuthError(w http.ResponseWriter, msg string) {
