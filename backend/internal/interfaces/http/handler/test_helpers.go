@@ -25,7 +25,7 @@ func SetupTestHandler(t *testing.T) *TestableHandler {
 	repo := newMockMerchantRepo()
 	svc := appmch.NewService(repo)
 	logger, _ := zap.NewDevelopment()
-	h := NewMerchantHandler(svc, logger)
+	h := NewMerchantHandler(svc, nil, logger)
 	return &TestableHandler{h}
 }
 

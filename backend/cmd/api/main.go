@@ -14,13 +14,15 @@ import (
 	appprov "github.com/paymentbridge/pcp/internal/application/provider"
 	"github.com/paymentbridge/pcp/internal/application/analytics"
 	approuting "github.com/paymentbridge/pcp/internal/application/routing"
+	"github.com/paymentbridge/pcp/internal/domain/audit"
+	"github.com/paymentbridge/pcp/internal/domain/provider"
 	infraauth "github.com/paymentbridge/pcp/internal/infrastructure/auth"
 	"github.com/paymentbridge/pcp/internal/infrastructure/cache"
 	"github.com/paymentbridge/pcp/internal/infrastructure/config"
 	"github.com/paymentbridge/pcp/internal/infrastructure/connector"
 	"github.com/paymentbridge/pcp/internal/infrastructure/logging"
+	"github.com/paymentbridge/pcp/internal/infrastructure/observability"
 	"github.com/paymentbridge/pcp/internal/infrastructure/persistence"
-	"github.com/paymentbridge/pcp/internal/domain/provider"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/handler"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/router"
 	"go.uber.org/zap"
@@ -65,6 +67,10 @@ func run() error {
 		logger.Info("connected to Redis")
 	}
 
+	// Prometheus metrics
+	metrics := observability.NewMetrics()
+	logger.Info("prometheus metrics initialized")
+
 	// JWT Service
 	jwtService := infraauth.NewJWTService(cfg.JWT.Secret, cfg.JWT.Issuer, cfg.JWT.Expiration)
 
@@ -74,6 +80,9 @@ func run() error {
 	paymentRepo := persistence.NewPostgresPaymentRepository(pool)
 	routingRuleRepo := persistence.NewPostgresRoutingRuleRepository(pool)
 	analyticsRepo := persistence.NewPostgresAnalyticsRepository(pool)
+	auditRepo := persistence.NewPostgresAuditRepository(pool)
+	_ = persistence.NewPostgresWebhookRepository(pool)           // webhook repo ready for Sprint 2
+	_ = persistence.NewPostgresReconciliationRepository(pool)    // reconciliation repo ready for Sprint 2
 
 	// Application services
 	merchantService := appmch.NewService(merchantRepo)
@@ -81,6 +90,7 @@ func run() error {
 	routingEngine := approuting.NewEngine(routingRuleRepo, providerRepo)
 	paymentService := apppay.NewService(paymentRepo, providerRepo, routingEngine)
 	analyticsService := analytics.NewService(analyticsRepo)
+	auditService := audit.NewService(auditRepo)
 
 	// Register payment gateways
 	stripeGw := connector.NewStripeGateway(map[string]string{"api_key": "sk_test_default"})
@@ -92,13 +102,13 @@ func run() error {
 
 	// HTTP handlers
 	healthHandler := handler.NewHealthHandler(pool)
-	merchantHandler := handler.NewMerchantHandler(merchantService, logger)
+	merchantHandler := handler.NewMerchantHandler(merchantService, auditService, logger)
 	providerHandler := handler.NewProviderHandler(providerService, logger)
 	paymentHandler := handler.NewPaymentHandler(paymentService, logger)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, logger)
 
 	// Build router
-	r := router.New(logger, jwtService, merchantRepo, healthHandler, merchantHandler, providerHandler, paymentHandler, analyticsHandler)
+	r := router.New(logger, jwtService, merchantRepo, healthHandler, merchantHandler, providerHandler, paymentHandler, analyticsHandler, metrics)
 
 	// HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

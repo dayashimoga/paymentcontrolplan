@@ -20,7 +20,7 @@ func testMerchantRouter() (*chi.Mux, *appmch.Service) {
 	repo := newTestMockRepo()
 	svc := appmch.NewService(repo)
 	logger := zap.NewNop()
-	h := handler.NewMerchantHandler(svc, logger)
+	h := handler.NewMerchantHandler(svc, nil, logger)
 
 	r := chi.NewRouter()
 	r.Post("/api/v1/merchants", h.Create)

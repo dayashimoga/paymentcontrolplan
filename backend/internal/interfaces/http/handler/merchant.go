@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	appmerchant "github.com/paymentbridge/pcp/internal/application/merchant"
+	"github.com/paymentbridge/pcp/internal/domain/audit"
 	"github.com/paymentbridge/pcp/internal/domain/common"
 	"github.com/paymentbridge/pcp/internal/domain/merchant"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/dto"
@@ -17,15 +18,17 @@ import (
 
 // MerchantHandler handles HTTP requests for the merchant resource.
 type MerchantHandler struct {
-	service *appmerchant.Service
-	logger  *zap.Logger
+	service      *appmerchant.Service
+	auditService *audit.Service
+	logger       *zap.Logger
 }
 
 // NewMerchantHandler creates a new merchant handler.
-func NewMerchantHandler(service *appmerchant.Service, logger *zap.Logger) *MerchantHandler {
+func NewMerchantHandler(service *appmerchant.Service, auditService *audit.Service, logger *zap.Logger) *MerchantHandler {
 	return &MerchantHandler{
-		service: service,
-		logger:  logger,
+		service:      service,
+		auditService: auditService,
+		logger:       logger,
 	}
 }
 
@@ -55,6 +58,9 @@ func (h *MerchantHandler) Create(w http.ResponseWriter, r *http.Request) {
 		zap.String("merchant_id", m.ID.String()),
 		zap.String("merchant_name", m.Name),
 	)
+
+	// Audit log
+	h.logAudit(r, "merchant", m.ID, m.ID, "create", map[string]interface{}{"name": m.Name})
 
 	respondJSON(w, http.StatusCreated, dto.ToMerchantResponse(m))
 }
@@ -127,6 +133,9 @@ func (h *MerchantHandler) Update(w http.ResponseWriter, r *http.Request) {
 		zap.String("merchant_id", m.ID.String()),
 	)
 
+	// Audit log
+	h.logAudit(r, "merchant", m.ID, m.ID, "update", map[string]interface{}{"name": req.Name, "webhook_url": req.WebhookURL})
+
 	respondJSON(w, http.StatusOK, dto.ToMerchantResponse(m))
 }
 
@@ -147,6 +156,9 @@ func (h *MerchantHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		zap.String("merchant_id", id.String()),
 	)
 
+	// Audit log
+	h.logAudit(r, "merchant", id, id, "delete", nil)
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -162,5 +174,15 @@ func (h *MerchantHandler) handleError(w http.ResponseWriter, err error) {
 	default:
 		h.logger.Error("unhandled error", zap.Error(err))
 		respondError(w, http.StatusInternalServerError, "internal_error", "an unexpected error occurred")
+	}
+}
+
+// logAudit records an audit log entry. Failures are logged but do not affect the response.
+func (h *MerchantHandler) logAudit(r *http.Request, entityType string, entityID, actorID uuid.UUID, action string, changes map[string]interface{}) {
+	if h.auditService == nil {
+		return
+	}
+	if err := h.auditService.Log(r.Context(), entityType, entityID, actorID, action, changes, r.RemoteAddr, r.UserAgent()); err != nil {
+		h.logger.Warn("audit log failed", zap.Error(err))
 	}
 }

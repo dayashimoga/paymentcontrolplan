@@ -1,12 +1,14 @@
 package router
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/paymentbridge/pcp/internal/domain/auth"
 	"github.com/paymentbridge/pcp/internal/domain/merchant"
+	"github.com/paymentbridge/pcp/internal/infrastructure/observability"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/handler"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/middleware"
 	"go.uber.org/zap"
@@ -22,6 +24,7 @@ func New(
 	providerHandler *handler.ProviderHandler,
 	paymentHandler *handler.PaymentHandler,
 	analyticsHandler *handler.AnalyticsHandler,
+	metrics *observability.Metrics,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -31,6 +34,8 @@ func New(
 	idempotencyStore := middleware.NewIdempotencyStore(24 * time.Hour)
 
 	// Global middleware stack
+	r.Use(middleware.CORS("*"))
+	r.Use(middleware.SecurityHeaders)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Recovery(logger))
 	r.Use(middleware.Logging(logger))
@@ -38,9 +43,17 @@ func New(
 	r.Use(chimw.Compress(5))
 	r.Use(rateLimiter.RateLimit)
 
+	// Observability middleware
+	if metrics != nil {
+		r.Use(metrics.MetricsMiddleware)
+	}
+
 	// Health and readiness probes (no auth required)
 	r.Get("/health", healthHandler.Health)
 	r.Get("/ready", healthHandler.Ready)
+
+	// Prometheus metrics endpoint
+	r.Handle("/metrics", observability.Handler())
 
 	// API v1 routes
 	r.Route("/api/v1", func(r chi.Router) {
@@ -82,4 +95,9 @@ func New(
 	})
 
 	return r
+}
+
+// metricsHandler returns an HTTP handler for Prometheus metrics scraping.
+func metricsHandler() http.Handler {
+	return observability.Handler()
 }

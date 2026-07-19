@@ -29,7 +29,7 @@ func TestNewRouter(t *testing.T) {
 	tokenSvc := &dummyTokenSvc{}
 
 	healthH := handler.NewHealthHandler(nil)
-	merchantH := handler.NewMerchantHandler(nil, logger)
+	merchantH := handler.NewMerchantHandler(nil, nil, logger)
 	provH := handler.NewProviderHandler(appprov.NewService(nil), logger)
 	paymentH := handler.NewPaymentHandler(nil, logger)
 	analyticsH := handler.NewAnalyticsHandler(nil, logger)
@@ -43,6 +43,7 @@ func TestNewRouter(t *testing.T) {
 		provH,
 		paymentH,
 		analyticsH,
+		nil,
 	)
 
 	assert.NotNil(t, r)
