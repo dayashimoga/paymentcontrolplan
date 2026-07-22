@@ -75,6 +75,39 @@ func (e *DefaultEngine) SelectProvider(ctx context.Context, merchantID uuid.UUID
 	return providers[0], nil
 }
 
+// SelectCandidateProviders returns an ordered list of candidate active providers for a payment,
+// enabling automated cross-provider failover if the primary provider fails.
+func (e *DefaultEngine) SelectCandidateProviders(ctx context.Context, merchantID uuid.UUID, amount int64, currency string) ([]*provider.Provider, error) {
+	seen := make(map[uuid.UUID]bool)
+	var candidates []*provider.Provider
+
+	// 1. Check primary provider via SelectProvider
+	if primary, err := e.SelectProvider(ctx, merchantID, amount, currency); err == nil && primary != nil {
+		seen[primary.ID] = true
+		candidates = append(candidates, primary)
+	}
+
+	// 2. Append all other active providers ordered by priority
+	allActive, err := e.providerRepo.ListActive(ctx)
+	if err == nil && len(allActive) > 0 {
+		sort.Slice(allActive, func(i, j int) bool {
+			return allActive[i].Priority < allActive[j].Priority
+		})
+		for _, p := range allActive {
+			if !seen[p.ID] {
+				seen[p.ID] = true
+				candidates = append(candidates, p)
+			}
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no active providers available for failover")
+	}
+
+	return candidates, nil
+}
+
 // weightedSelect picks a rule using weight-based random selection.
 func weightedSelect(rules []*routing.Rule) *routing.Rule {
 	totalWeight := 0

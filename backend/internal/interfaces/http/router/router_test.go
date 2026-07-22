@@ -30,8 +30,8 @@ func TestNewRouter(t *testing.T) {
 
 	healthH := handler.NewHealthHandler(nil)
 	merchantH := handler.NewMerchantHandler(nil, nil, logger)
-	provH := handler.NewProviderHandler(appprov.NewService(nil), logger)
-	paymentH := handler.NewPaymentHandler(nil, logger)
+	provH := handler.NewProviderHandler(appprov.NewService(nil), nil, logger)
+	paymentH := handler.NewPaymentHandler(nil, nil, nil, logger)
 	analyticsH := handler.NewAnalyticsHandler(nil, logger)
 
 	r := router.New(
@@ -43,7 +43,11 @@ func TestNewRouter(t *testing.T) {
 		provH,
 		paymentH,
 		analyticsH,
-		nil,
+		nil, // webhookHandler
+		nil, // reconciliationHandler
+		nil, // metrics
+		false, // tracingEnabled
+		"", // tracingServiceName
 	)
 
 	assert.NotNil(t, r)

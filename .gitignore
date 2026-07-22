@@ -50,3 +50,9 @@ ehthumbs.db
 *.coverprofile
 junit-report.xml
 coverage.xml
+
+# Portable Toolchains & Temporary Downloads
+/go/
+/go_toolchain/
+*.zip
+

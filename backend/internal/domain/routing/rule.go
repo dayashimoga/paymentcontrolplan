@@ -38,9 +38,10 @@ func (r *Rule) Matches(currency string, amount int64) bool {
 	return true
 }
 
-// Engine is the port for the routing engine that selects a payment provider.
+// Engine is the port for the routing engine that selects payment providers.
 type Engine interface {
 	SelectProvider(ctx context.Context, merchantID uuid.UUID, amount int64, currency string) (*provider.Provider, error)
+	SelectCandidateProviders(ctx context.Context, merchantID uuid.UUID, amount int64, currency string) ([]*provider.Provider, error)
 }
 
 // RuleRepository defines the port for routing rule persistence.

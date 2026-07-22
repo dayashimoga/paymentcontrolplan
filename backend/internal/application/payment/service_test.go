@@ -134,6 +134,14 @@ func (m *mockEngine) SelectProvider(ctx context.Context, merchantID uuid.UUID, a
 	return args.Get(0).(*provider.Provider), args.Error(1)
 }
 
+func (m *mockEngine) SelectCandidateProviders(ctx context.Context, merchantID uuid.UUID, amount int64, currency string) ([]*provider.Provider, error) {
+	p, err := m.SelectProvider(ctx, merchantID, amount, currency)
+	if err != nil {
+		return nil, err
+	}
+	return []*provider.Provider{p}, nil
+}
+
 func TestPaymentService_Create(t *testing.T) {
 	ctx := context.Background()
 	payRepo := new(mockPaymentRepo)

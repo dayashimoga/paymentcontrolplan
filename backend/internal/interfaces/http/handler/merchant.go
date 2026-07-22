@@ -162,6 +162,30 @@ func (h *MerchantHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// RotateAPIKey handles POST /api/v1/merchants/{id}/rotate-key
+func (h *MerchantHandler) RotateAPIKey(w http.ResponseWriter, r *http.Request) {
+	id, err := uuid.Parse(chi.URLParam(r, "id"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_id", "id must be a valid UUID")
+		return
+	}
+
+	m, err := h.service.RotateAPIKey(r.Context(), id)
+	if err != nil {
+		h.handleError(w, err)
+		return
+	}
+
+	h.logger.Info("merchant API key rotated",
+		zap.String("merchant_id", m.ID.String()),
+	)
+
+	// Audit log
+	h.logAudit(r, "merchant", m.ID, m.ID, "rotate_api_key", map[string]interface{}{"status": "success"})
+
+	respondJSON(w, http.StatusOK, dto.ToMerchantResponse(m))
+}
+
 // handleError maps domain errors to HTTP responses.
 func (h *MerchantHandler) handleError(w http.ResponseWriter, err error) {
 	switch {

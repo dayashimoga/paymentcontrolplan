@@ -122,6 +122,28 @@ func (s *Service) GetByAPIKey(ctx context.Context, apiKey string) (*domain.Merch
 	return s.repo.GetByAPIKey(ctx, apiKey)
 }
 
+// RotateAPIKey generates a new API key for a merchant and updates persistence.
+func (s *Service) RotateAPIKey(ctx context.Context, id uuid.UUID) (*domain.Merchant, error) {
+	m, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	newKey, err := generateAPIKey()
+	if err != nil {
+		return nil, fmt.Errorf("generating API key: %w", err)
+	}
+
+	m.APIKey = newKey
+	m.UpdatedAt = time.Now().UTC()
+
+	if err := s.repo.Update(ctx, m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
 // generateAPIKey creates a cryptographically random API key with the "pcp_" prefix.
 func generateAPIKey() (string, error) {
 	b := make([]byte, 32)

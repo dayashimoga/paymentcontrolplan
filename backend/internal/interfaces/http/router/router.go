@@ -24,7 +24,11 @@ func New(
 	providerHandler *handler.ProviderHandler,
 	paymentHandler *handler.PaymentHandler,
 	analyticsHandler *handler.AnalyticsHandler,
+	webhookHandler *handler.WebhookHandler,
+	reconciliationHandler *handler.ReconciliationHandler,
 	metrics *observability.Metrics,
+	tracingEnabled bool,
+	tracingServiceName string,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
@@ -46,6 +50,11 @@ func New(
 	// Observability middleware
 	if metrics != nil {
 		r.Use(metrics.MetricsMiddleware)
+	}
+
+	// OpenTelemetry distributed tracing
+	if tracingEnabled {
+		r.Use(observability.TracingMiddleware(tracingServiceName))
 	}
 
 	// Health and readiness probes (no auth required)
@@ -75,6 +84,7 @@ func New(
 			r.Get("/merchants/{id}", merchantHandler.Get)
 			r.Put("/merchants/{id}", merchantHandler.Update)
 			r.Delete("/merchants/{id}", merchantHandler.Delete)
+			r.Post("/merchants/{id}/rotate-key", merchantHandler.RotateAPIKey)
 
 			// Providers
 			r.Post("/providers", providerHandler.Create)
@@ -87,6 +97,19 @@ func New(
 			r.Get("/payments", paymentHandler.List)
 			r.Get("/payments/{id}", paymentHandler.Get)
 			r.Post("/payments/{id}/refund", paymentHandler.Refund)
+
+			// Webhooks
+			if webhookHandler != nil {
+				r.Get("/payments/{id}/webhooks", webhookHandler.ListByPayment)
+				r.Get("/webhooks/{id}", webhookHandler.GetByID)
+				r.Post("/webhooks/process", webhookHandler.ProcessPending)
+			}
+
+			// Reconciliation
+			if reconciliationHandler != nil {
+				r.Get("/reconciliation/unmatched", reconciliationHandler.ListUnmatched)
+				r.Post("/reconciliation/run", reconciliationHandler.Run)
+			}
 
 			// Analytics
 			r.Get("/analytics/summary", analyticsHandler.GetSummary)

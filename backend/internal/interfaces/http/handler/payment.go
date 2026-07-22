@@ -9,6 +9,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	apppay "github.com/paymentbridge/pcp/internal/application/payment"
+	appwebhook "github.com/paymentbridge/pcp/internal/application/webhook"
+	"github.com/paymentbridge/pcp/internal/domain/audit"
 	"github.com/paymentbridge/pcp/internal/domain/common"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/dto"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/middleware"
@@ -17,13 +19,20 @@ import (
 
 // PaymentHandler handles HTTP requests for payment processing.
 type PaymentHandler struct {
-	service *apppay.Service
-	logger  *zap.Logger
+	service        *apppay.Service
+	auditService   *audit.Service
+	webhookService *appwebhook.Service
+	logger         *zap.Logger
 }
 
 // NewPaymentHandler creates a new payment handler.
-func NewPaymentHandler(service *apppay.Service, logger *zap.Logger) *PaymentHandler {
-	return &PaymentHandler{service: service, logger: logger}
+func NewPaymentHandler(service *apppay.Service, auditService *audit.Service, webhookService *appwebhook.Service, logger *zap.Logger) *PaymentHandler {
+	return &PaymentHandler{
+		service:        service,
+		auditService:   auditService,
+		webhookService: webhookService,
+		logger:         logger,
+	}
 }
 
 func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -48,6 +57,17 @@ func (h *PaymentHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.logger.Info("payment created", zap.String("payment_id", p.ID.String()), zap.String("status", string(p.Status)))
+
+	// Audit log
+	h.logAudit(r, "payment", p.ID, merchant.ID, "create", map[string]interface{}{
+		"amount": p.Amount, "currency": p.Currency, "status": string(p.Status),
+	})
+
+	// Enqueue webhook for payment status notification
+	h.enqueueWebhook(r, merchant.ID, p.ID, merchant.WebhookURL, "payment."+string(p.Status), map[string]interface{}{
+		"payment_id": p.ID, "status": string(p.Status), "amount": p.Amount, "currency": p.Currency,
+	})
+
 	respondJSON(w, http.StatusCreated, dto.ToPaymentResponse(p))
 }
 
@@ -87,6 +107,8 @@ func (h *PaymentHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *PaymentHandler) Refund(w http.ResponseWriter, r *http.Request) {
+	merchant := middleware.MerchantFromContext(r.Context())
+
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		respondError(w, http.StatusBadRequest, "invalid_id", "invalid UUID")
@@ -97,6 +119,23 @@ func (h *PaymentHandler) Refund(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+
+	// Audit log
+	actorID := id // fallback if no merchant context
+	if merchant != nil {
+		actorID = merchant.ID
+	}
+	h.logAudit(r, "payment", id, actorID, "refund", map[string]interface{}{
+		"amount": p.Amount, "currency": p.Currency, "status": string(p.Status),
+	})
+
+	// Enqueue webhook for refund notification
+	if merchant != nil {
+		h.enqueueWebhook(r, merchant.ID, p.ID, merchant.WebhookURL, "payment.refunded", map[string]interface{}{
+			"payment_id": p.ID, "status": string(p.Status), "amount": p.Amount, "currency": p.Currency,
+		})
+	}
+
 	respondJSON(w, http.StatusOK, dto.ToPaymentResponse(p))
 }
 
@@ -113,3 +152,24 @@ func (h *PaymentHandler) handleError(w http.ResponseWriter, err error) {
 		respondError(w, http.StatusInternalServerError, "internal_error", "unexpected error")
 	}
 }
+
+// logAudit records an audit log entry. Failures are logged but do not affect the response.
+func (h *PaymentHandler) logAudit(r *http.Request, entityType string, entityID, actorID uuid.UUID, action string, changes map[string]interface{}) {
+	if h.auditService == nil {
+		return
+	}
+	if err := h.auditService.Log(r.Context(), entityType, entityID, actorID, action, changes, r.RemoteAddr, r.UserAgent()); err != nil {
+		h.logger.Warn("audit log failed", zap.Error(err))
+	}
+}
+
+// enqueueWebhook enqueues a webhook delivery if the merchant has a webhook URL.
+func (h *PaymentHandler) enqueueWebhook(r *http.Request, merchantID, paymentID uuid.UUID, webhookURL, eventType string, payload interface{}) {
+	if h.webhookService == nil || webhookURL == "" {
+		return
+	}
+	if err := h.webhookService.Enqueue(r.Context(), merchantID, paymentID, webhookURL, eventType, payload); err != nil {
+		h.logger.Warn("webhook enqueue failed", zap.Error(err))
+	}
+}
+

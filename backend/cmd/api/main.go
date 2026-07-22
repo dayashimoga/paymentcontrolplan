@@ -14,6 +14,9 @@ import (
 	appprov "github.com/paymentbridge/pcp/internal/application/provider"
 	"github.com/paymentbridge/pcp/internal/application/analytics"
 	approuting "github.com/paymentbridge/pcp/internal/application/routing"
+	appwebhook "github.com/paymentbridge/pcp/internal/application/webhook"
+	apprec "github.com/paymentbridge/pcp/internal/application/reconciliation"
+	domrec "github.com/paymentbridge/pcp/internal/domain/reconciliation"
 	"github.com/paymentbridge/pcp/internal/domain/audit"
 	"github.com/paymentbridge/pcp/internal/domain/provider"
 	infraauth "github.com/paymentbridge/pcp/internal/infrastructure/auth"
@@ -67,6 +70,20 @@ func run() error {
 		logger.Info("connected to Redis")
 	}
 
+	// OpenTelemetry Tracing (optional, non-fatal if endpoint unavailable)
+	if cfg.Tracing.Enabled {
+		shutdown, err := observability.InitTracer(ctx, cfg.Tracing.ServiceName, cfg.Tracing.Endpoint)
+		if err != nil {
+			logger.Warn("tracing initialization failed, continuing without tracing", zap.Error(err))
+		} else {
+			defer func() { _ = shutdown(ctx) }()
+			logger.Info("OpenTelemetry tracing initialized",
+				zap.String("endpoint", cfg.Tracing.Endpoint),
+				zap.String("service", cfg.Tracing.ServiceName),
+			)
+		}
+	}
+
 	// Prometheus metrics
 	metrics := observability.NewMetrics()
 	logger.Info("prometheus metrics initialized")
@@ -81,8 +98,8 @@ func run() error {
 	routingRuleRepo := persistence.NewPostgresRoutingRuleRepository(pool)
 	analyticsRepo := persistence.NewPostgresAnalyticsRepository(pool)
 	auditRepo := persistence.NewPostgresAuditRepository(pool)
-	_ = persistence.NewPostgresWebhookRepository(pool)           // webhook repo ready for Sprint 2
-	_ = persistence.NewPostgresReconciliationRepository(pool)    // reconciliation repo ready for Sprint 2
+	webhookRepo := persistence.NewPostgresWebhookRepository(pool)
+	reconciliationRepo := persistence.NewPostgresReconciliationRepository(pool)
 
 	// Application services
 	merchantService := appmch.NewService(merchantRepo)
@@ -91,6 +108,10 @@ func run() error {
 	paymentService := apppay.NewService(paymentRepo, providerRepo, routingEngine)
 	analyticsService := analytics.NewService(analyticsRepo)
 	auditService := audit.NewService(auditRepo)
+	webhookService := appwebhook.NewService(webhookRepo, cfg.Webhook.SigningKey, logger)
+	reconciliationService := domrec.NewService(reconciliationRepo)
+	reconciliationWorker := apprec.NewWorker(reconciliationService, paymentRepo, providerRepo, logger)
+	providerHealthMonitor := appprov.NewHealthMonitor(providerService, logger)
 
 	// Register payment gateways
 	stripeGw := connector.NewStripeGateway(map[string]string{"api_key": "sk_test_default"})
@@ -99,16 +120,31 @@ func run() error {
 	providerService.RegisterGateway(provider.TypePayPal, paypalGw)
 	paymentService.RegisterGateway(provider.TypeStripe, stripeGw)
 	paymentService.RegisterGateway(provider.TypePayPal, paypalGw)
+	reconciliationWorker.RegisterGateway(provider.TypeStripe, stripeGw)
+	reconciliationWorker.RegisterGateway(provider.TypePayPal, paypalGw)
 
 	// HTTP handlers
 	healthHandler := handler.NewHealthHandler(pool)
 	merchantHandler := handler.NewMerchantHandler(merchantService, auditService, logger)
-	providerHandler := handler.NewProviderHandler(providerService, logger)
-	paymentHandler := handler.NewPaymentHandler(paymentService, logger)
+	providerHandler := handler.NewProviderHandler(providerService, auditService, logger)
+	paymentHandler := handler.NewPaymentHandler(paymentService, auditService, webhookService, logger)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, logger)
+	webhookHandler := handler.NewWebhookHandler(webhookService, logger)
+	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService, reconciliationWorker, logger)
 
 	// Build router
-	r := router.New(logger, jwtService, merchantRepo, healthHandler, merchantHandler, providerHandler, paymentHandler, analyticsHandler, metrics)
+	r := router.New(
+		logger, jwtService, merchantRepo,
+		healthHandler, merchantHandler, providerHandler, paymentHandler, analyticsHandler, webhookHandler, reconciliationHandler,
+		metrics, cfg.Tracing.Enabled, cfg.Tracing.ServiceName,
+	)
+
+	// Start background workers
+	workerCtx, workerCancel := context.WithCancel(ctx)
+	defer workerCancel()
+	go runWebhookWorker(workerCtx, webhookService, cfg.Webhook, logger)
+	go providerHealthMonitor.RunWorker(workerCtx, 60*time.Second)
+	go reconciliationWorker.RunWorker(workerCtx, 5*time.Minute)
 
 	// HTTP server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -132,6 +168,9 @@ func run() error {
 	sig := <-quit
 	logger.Info("shutdown signal received", zap.String("signal", sig.String()))
 
+	// Cancel background workers
+	workerCancel()
+
 	shutdownCtx, cancel := context.WithTimeout(ctx, cfg.Server.ShutdownTimeout)
 	defer cancel()
 
@@ -141,3 +180,44 @@ func run() error {
 	logger.Info("server stopped gracefully")
 	return nil
 }
+
+// runWebhookWorker processes pending webhook deliveries at a configurable interval.
+func runWebhookWorker(ctx context.Context, svc *appwebhook.Service, cfg config.WebhookConfig, logger *zap.Logger) {
+	interval := cfg.WorkerInterval
+	if interval <= 0 {
+		interval = 10 * time.Second
+	}
+	batchSize := cfg.WorkerBatchSize
+	if batchSize <= 0 {
+		batchSize = 50
+	}
+
+	logger.Info("webhook delivery worker started",
+		zap.Duration("interval", interval),
+		zap.Int("batch_size", batchSize),
+	)
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("webhook delivery worker stopped")
+			return
+		case <-ticker.C:
+			processed, err := svc.ProcessPending(ctx, batchSize)
+			if err != nil {
+				if ctx.Err() != nil {
+					return // context cancelled during shutdown
+				}
+				logger.Error("webhook delivery batch failed", zap.Error(err))
+				continue
+			}
+			if processed > 0 {
+				logger.Info("webhook delivery batch completed", zap.Int("processed", processed))
+			}
+		}
+	}
+}
+

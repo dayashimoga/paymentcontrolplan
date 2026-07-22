@@ -16,7 +16,7 @@ import (
 func testProviderRouter() (*chi.Mux, *appprov.Service) {
 	provRepo := new(mockProviderRepo)
 	svc := appprov.NewService(provRepo)
-	h := handler.NewProviderHandler(svc, zap.NewNop())
+	h := handler.NewProviderHandler(svc, nil, zap.NewNop())
 
 	r := chi.NewRouter()
 	r.Post("/api/v1/providers", h.Create)

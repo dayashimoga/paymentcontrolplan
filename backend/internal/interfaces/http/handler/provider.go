@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	appprov "github.com/paymentbridge/pcp/internal/application/provider"
+	"github.com/paymentbridge/pcp/internal/domain/audit"
 	"github.com/paymentbridge/pcp/internal/domain/common"
 	"github.com/paymentbridge/pcp/internal/domain/provider"
 	"github.com/paymentbridge/pcp/internal/interfaces/http/dto"
@@ -17,13 +18,14 @@ import (
 
 // ProviderHandler handles HTTP requests for the provider resource.
 type ProviderHandler struct {
-	service *appprov.Service
-	logger  *zap.Logger
+	service      *appprov.Service
+	auditService *audit.Service
+	logger       *zap.Logger
 }
 
 // NewProviderHandler creates a new provider handler.
-func NewProviderHandler(service *appprov.Service, logger *zap.Logger) *ProviderHandler {
-	return &ProviderHandler{service: service, logger: logger}
+func NewProviderHandler(service *appprov.Service, auditService *audit.Service, logger *zap.Logger) *ProviderHandler {
+	return &ProviderHandler{service: service, auditService: auditService, logger: logger}
 }
 
 func (h *ProviderHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -39,6 +41,10 @@ func (h *ProviderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+
+	// Audit log
+	h.logAudit(r, "provider", p.ID, p.ID, "create", map[string]interface{}{"name": p.Name, "type": string(p.Type)})
+
 	respondJSON(w, http.StatusCreated, dto.ToProviderResponse(p))
 }
 
@@ -81,6 +87,10 @@ func (h *ProviderHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		h.handleError(w, err)
 		return
 	}
+
+	// Audit log
+	h.logAudit(r, "provider", id, id, "delete", nil)
+
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -97,3 +107,14 @@ func (h *ProviderHandler) handleError(w http.ResponseWriter, err error) {
 		respondError(w, http.StatusInternalServerError, "internal_error", "unexpected error")
 	}
 }
+
+// logAudit records an audit log entry. Failures are logged but do not affect the response.
+func (h *ProviderHandler) logAudit(r *http.Request, entityType string, entityID, actorID uuid.UUID, action string, changes map[string]interface{}) {
+	if h.auditService == nil {
+		return
+	}
+	if err := h.auditService.Log(r.Context(), entityType, entityID, actorID, action, changes, r.RemoteAddr, r.UserAgent()); err != nil {
+		h.logger.Warn("audit log failed", zap.Error(err))
+	}
+}
+

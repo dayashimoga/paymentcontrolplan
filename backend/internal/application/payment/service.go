@@ -77,45 +77,57 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (*domain.Paymen
 		return nil, err
 	}
 
-	// Route to a provider
-	selectedProvider, err := s.routingEngine.SelectProvider(ctx, input.MerchantID, input.Amount, input.Currency)
-	if err != nil {
-		payment.MarkFailed("no available provider: " + err.Error())
-		_ = s.paymentRepo.Update(ctx, payment)
+	// Obtain candidate providers for processing with failover
+	candidates, err := s.routingEngine.SelectCandidateProviders(ctx, input.MerchantID, input.Amount, input.Currency)
+	if err != nil || len(candidates) == 0 {
+		// Fallback to single provider selection if candidate selection isn't implemented
+		p, singleErr := s.routingEngine.SelectProvider(ctx, input.MerchantID, input.Amount, input.Currency)
+		if singleErr != nil {
+			payment.MarkFailed("no available provider: " + singleErr.Error())
+			_ = s.paymentRepo.Update(ctx, payment)
+			return payment, nil
+		}
+		candidates = []*provider.Provider{p}
+	}
+
+	var lastErr error
+	for _, candidate := range candidates {
+		gw, ok := s.gateways[candidate.Type]
+		if !ok {
+			lastErr = fmt.Errorf("no gateway for provider type: %s", candidate.Type)
+			continue
+		}
+
+		payment.MarkProcessing(candidate.ID)
+		if err := s.paymentRepo.Update(ctx, payment); err != nil {
+			return nil, fmt.Errorf("updating payment to processing: %w", err)
+		}
+
+		chargeResp, err := gw.Charge(ctx, provider.ChargeRequest{
+			Amount:         input.Amount,
+			Currency:       input.Currency,
+			Description:    input.Description,
+			Metadata:       input.Metadata,
+			IdempotencyKey: input.IdempotencyKey,
+		})
+		if err != nil {
+			lastErr = err
+			continue // try next candidate provider
+		}
+
+		payment.MarkCompleted(chargeResp.ExternalID)
+		if err := s.paymentRepo.Update(ctx, payment); err != nil {
+			return nil, fmt.Errorf("updating payment to completed: %w", err)
+		}
 		return payment, nil
 	}
 
-	// Get gateway for the provider type
-	gw, ok := s.gateways[selectedProvider.Type]
-	if !ok {
-		payment.MarkFailed(fmt.Sprintf("no gateway for provider type: %s", selectedProvider.Type))
-		_ = s.paymentRepo.Update(ctx, payment)
-		return payment, nil
+	// All candidate providers failed
+	if lastErr == nil {
+		lastErr = fmt.Errorf("all payment gateways unavailable")
 	}
-
-	// Process charge
-	payment.MarkProcessing(selectedProvider.ID)
-	if err := s.paymentRepo.Update(ctx, payment); err != nil {
-		return nil, fmt.Errorf("updating payment to processing: %w", err)
-	}
-
-	chargeResp, err := gw.Charge(ctx, provider.ChargeRequest{
-		Amount:         input.Amount,
-		Currency:       input.Currency,
-		Description:    input.Description,
-		Metadata:       input.Metadata,
-		IdempotencyKey: input.IdempotencyKey,
-	})
-	if err != nil {
-		payment.MarkFailed(err.Error())
-		_ = s.paymentRepo.Update(ctx, payment)
-		return payment, nil
-	}
-
-	payment.MarkCompleted(chargeResp.ExternalID)
-	if err := s.paymentRepo.Update(ctx, payment); err != nil {
-		return nil, fmt.Errorf("updating payment to completed: %w", err)
-	}
+	payment.MarkFailed(lastErr.Error())
+	_ = s.paymentRepo.Update(ctx, payment)
 	return payment, nil
 }
 
